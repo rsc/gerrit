@@ -258,6 +258,7 @@ func writePatchSet(old *CL, updated []byte) (xerr error) {
 			// comment on old file
 			if old.Base == "" {
 				c.Side = "PARENT"
+				c.PatchSet = old.PatchRev.PatchSetNumber
 			} else {
 				c.PatchSet = old.BaseRev.PatchSetNumber
 			}
