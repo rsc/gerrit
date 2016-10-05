@@ -407,11 +407,11 @@ func refill(host string) {
 				continue
 			}
 			if ch.Project == "scratch" {
-				continue
 				m.NeedIndex = false
 				if err := storage.Write(tx, &m, "NeedIndex"); err != nil {
 					log.Fatal(err)
 				}
+				continue
 			}
 			var h History
 			h.Host = m.Host
