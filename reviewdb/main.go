@@ -124,7 +124,7 @@ func main() {
 		log.Fatalf("opening database: %v", err)
 	}
 	defer db.Close()
-	
+
 	db.Exec("pragma busy_timeout = 1000")
 
 	// TODO: Remove or deal with better.
@@ -344,7 +344,7 @@ Again:
 				log.Fatal(err)
 			}
 			return
-		}			
+		}
 		log.Fatalf("fetching %s: %s\n%s", urlStr, resp.Status, data)
 	}
 	i := bytes.IndexByte(data, '\n')
@@ -385,7 +385,7 @@ func refill(host string) {
 	}
 	for {
 		var all []RawJSON
-		if err := storage.Select(db, &all, "where Host = ? and NeedIndex == ? order by Number limit 100", host, true); err != nil {
+		if err := storage.Select(db, &all, "where Host = ? and NeedIndex = ? order by Number limit 100", host, true); err != nil {
 			log.Fatalf("sql: %v", err)
 		}
 		if len(all) == 0 {
@@ -400,10 +400,18 @@ func refill(host string) {
 			var ch gerrit.ChangeInfo
 			if err := json.Unmarshal(m.ChangeInfo, &ch); err != nil {
 				log.Printf("unmarshal: %v\n%s", err, m.ChangeInfo)
+				m.NeedIndex = false
+				if err := storage.Write(tx, &m, "NeedIndex"); err != nil {
+					log.Fatal(err)
+				}
 				continue
 			}
 			if ch.Project == "scratch" {
 				continue
+				m.NeedIndex = false
+				if err := storage.Write(tx, &m, "NeedIndex"); err != nil {
+					log.Fatal(err)
+				}
 			}
 			var h History
 			h.Host = m.Host
