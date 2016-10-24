@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -145,6 +146,7 @@ const dashMinDate = "12016-04-01"
 func dash(host, minDate string) {
 	actions, maxCL := dashActions(host)
 	plotAge(actions, maxCL, minDate)
+	plotActivity(host)
 }
 
 func plotAge(actions []action, maxCL int, minDate string) {
@@ -197,4 +199,109 @@ func plotAge(actions []action, maxCL int, minDate string) {
 	})
 	fmt.Fprintf(&buf, "\n];\n\n")
 	os.Stdout.Write(buf.Bytes())
+}
+
+func plotActivity(host string) {
+	rows, err := db.Query("select Who, count(*) from History where Time >= '2016-04-05' and Host = ? group by Who", host)
+	if err != nil {
+		log.Fatalf("sql activity: %v", err)
+	}
+	totalWho := map[string]int{}
+	for rows.Next() {
+		var who string
+		var count int
+		if err := rows.Scan(&who, &count); err != nil {
+			log.Fatal("sql scan counts: %v", err)
+		}
+		totalWho[who] += count
+	}
+
+	var allWho []string
+	for who := range totalWho {
+		allWho = append(allWho, who)
+	}
+	sort.Slice(allWho, func(i, j int) bool {
+		ti := totalWho[allWho[i]]
+		tj := totalWho[allWho[j]]
+		if ti != tj {
+			return ti > tj
+		}
+		return allWho[i] < allWho[j]
+	})
+
+	if len(allWho) > 40 {
+		allWho = allWho[:40]
+	}
+	plotActivityCounts(host, "GerritActivityData", "", allWho)
+	for _, action := range []string{"abandon", "comment", "create", "merge", "reply", "upload"} {
+		plotActivityCounts(host, "GerritActivityData_"+action, " and Action = '"+action+"'", allWho)
+	}
+}
+
+type weekActivity struct {
+	week  string
+	count map[string]int
+}
+
+func plotActivityCounts(host, name, cond string, allWho []string) {
+	rows, err := db.Query("select strftime('%Y-%W', Time) as Week, Who, count(*) as N from History where Time >= '2016-08-01' and Host = ? "+cond+" group by Week, Who order by Week, Who", host)
+	if err != nil {
+		log.Fatalf("sql activity counts: %v", err)
+	}
+	thisWeek := ""
+	var weeks []weekActivity
+	for rows.Next() {
+		var count int
+		var week, who string
+		if err := rows.Scan(&week, &who, &count); err != nil {
+			log.Fatalf("sql scan activity: %v", err)
+		}
+		if thisWeek != week {
+			weeks = append(weeks, weekActivity{week: week, count: map[string]int{}})
+			thisWeek = week
+		}
+		w := &weeks[len(weeks)-1]
+		w.count[who] += count
+	}
+
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "var %s = ", name)
+	printActivity(&buf, allWho, weeks)
+	os.Stdout.Write(buf.Bytes())
+}
+
+func printActivity(buf *bytes.Buffer, allWho []string, weeks []weekActivity) {
+	fmt.Fprintf(buf, "[\n")
+	fmt.Fprintf(buf, "  ['Date'")
+	for _, who := range allWho {
+		fmt.Fprintf(buf, ", '%s'", who)
+	}
+	fmt.Fprintf(buf, "],\n")
+	for _, w := range weeks {
+		fmt.Fprintf(buf, " [%s", weekToDate(w.week))
+		for _, who := range allWho {
+			fmt.Fprintf(buf, ", %d", w.count[who])
+		}
+		fmt.Fprintf(buf, "],\n")
+	}
+	fmt.Fprintf(buf, "];\n\n")
+}
+
+func weekToDate(w string) string {
+	y, err := strconv.Atoi(w[:4])
+	if err != nil {
+		log.Fatalf("bad week %s", w)
+	}
+	ww, err := strconv.Atoi(w[5:])
+	if err != nil {
+		log.Fatalf("bad week %s", w)
+	}
+	now := time.Date(y, time.January, 1, 12, 0, 0, 0, time.UTC)
+	if ww > 0 {
+		for now.Weekday() != time.Monday {
+			now = now.AddDate(0, 0, 1)
+		}
+		now = now.AddDate(0, 0, (ww-1)*7)
+	}
+	return fmt.Sprintf("myDate('%s')", now.Format(time.RFC3339)[:10])
 }
