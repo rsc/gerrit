@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	gobotPass, err := ioutil.ReadFile(filepath.Join(os.Getenv("HOME"), "keys", "gobot-golang-org.cookie"))
+	gobotPass, err := ioutil.ReadFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "gobot", "keys", "gobot-golang-org.cookie"))
 	if err != nil {
 		log.Fatal(err)
 	}
